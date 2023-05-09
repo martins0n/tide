@@ -1,0 +1,17 @@
+lr: 0.001
+horizon: ${experiment.horizon}
+lookback: 35
+ne_blocks: 2
+nd_blocks: 2
+hidden_size: 32
+dropout_level: 0
+covariates_size: 4
+temporal_decoder_hidden_size: 32
+decoder_output_size:  224
+static_covariates_size: 1
+max_epochs: 100
+feature_projection_output_size: 32
+feature_projection_hidden_size: 32
+train_batch_size: 64
+test_batch_size: 64
+train_size: 0.8

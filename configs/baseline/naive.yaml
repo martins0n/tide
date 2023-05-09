@@ -1,0 +1,5 @@
+_target_: etna.pipeline.Pipeline
+horizon: ${experiment.horizon}
+model:
+  _target_: etna.models.NaiveModel
+  lag: ${experiment.horizon}
