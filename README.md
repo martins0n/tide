@@ -5,6 +5,9 @@
 ### Install
 - `make install`
 
+### Data preparation
+- `make datasets`
+
 ### TiDE
 
 - `python pipe.py +experiment=pattern +dataset=pattern +model=pattern  model.max_epochs=500`
@@ -13,9 +16,6 @@
 ### Naive
 - `python pipe.py +experiment=electricity_96 +dataset=electricity +baseline=naive`
 - `python pipe.py +experiment=pattern +dataset=pattern +baseline=naive`
-
-### Data preparation
-- `make datasets`
 
 ### ToDo
 - [ ] Metrics reproducibility
