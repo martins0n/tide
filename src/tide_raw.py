@@ -35,6 +35,7 @@ class TiDEModel(pl.LightningModule):
         y_hat = self(batch)
         loss = self.loss(y_hat, batch["decoder_target"])
         self.log("val_loss", loss)
+        self.log("val_mse", nn.MSELoss()(y_hat, batch["decoder_target"]))
         self.log("val_mae", nn.L1Loss()(y_hat, batch["decoder_target"]))
         return loss
     
@@ -42,6 +43,7 @@ class TiDEModel(pl.LightningModule):
         y_hat = self(batch)
         loss = self.loss(y_hat, batch["decoder_target"])
         self.log("test_loss", loss)
+        self.log("test_mse", nn.MSELoss()(y_hat, batch["decoder_target"]))
         self.log("test_mae", nn.L1Loss()(y_hat, batch["decoder_target"]))
         return loss
     
