@@ -8,14 +8,16 @@ import numpy as np
 
 import pandas as pd
 from etna.datasets import TSDataset
-from etna.transforms import StandardScalerTransform
+from etna.transforms import StandardScalerTransform, DateFlagsTransform
+
 
 class TiDEModel(pl.LightningModule):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, lr=1e-3, *args: Any, **kwargs: Any) -> None:
+        super().__init__()
         
         self.tide = TiDE(*args, **kwargs)
         self.loss = nn.MSELoss()
+        self.lr = lr
 
     def forward(self, x):
         return self.tide(x)
@@ -30,34 +32,65 @@ class TiDEModel(pl.LightningModule):
         y_hat = self(batch)
         loss = self.loss(y_hat, batch["decoder_target"])
         self.log("val_loss", loss)
+        self.log("test_mae", nn.L1Loss()(y_hat, batch["decoder_target"]))
         return loss
     
+    def test_step(self, batch, batch_idx):
+        y_hat = self(batch)
+        loss = self.loss(y_hat, batch["decoder_target"])
+        self.log("test_loss", loss)
+        self.log("test_mae", nn.L1Loss()(y_hat, batch["decoder_target"]))
+        return loss
+    
+    def configure_optimizers(self) -> Any:
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 class Dataset:
-    def __init__(self, df, lookback, horizon):
+    def __init__(self, df, lookback, horizon, n_segments,):
         self.transformed = False
-        self.values = df.values
+        self.n_segments = n_segments
+        self.n_features = df.values.shape[1] // n_segments
+        self.values = df.values.astype(np.float32).reshape(df.values.shape[0], -1, self.n_features).transpose(1, 0, 2)
         self.lookback = lookback
         self.horizon = horizon
+        self.len = (len(df.values) - self.lookback - self.horizon + 1) * self.n_segments
 
-    def __getitem__(self, idx):
-        context = self.values[idx : idx + self.lookback]
-        target = self.values[idx + self.lookback : idx + self.lookback + self.horizon]
-        return {"context": context, "target": target}
+
+    def __getitem__(self, idx: int):
+        idx_segment = idx % self.n_segments
+        idx = idx // self.n_segments
+        encoder_covariates = self.values[idx_segment, idx : idx + self.lookback, :-1]
+        decoder_covariates = self.values[idx_segment, idx + self.lookback : idx + self.lookback + self.horizon, :-1]
+        attributes = np.array([idx % self.n_segments], np.float32)
+        decoder_target = self.values[
+            idx_segment, idx + self.lookback : idx + self.lookback + self.horizon, -1
+        ].reshape(-1, 1)
+        encoder_target = self.values[
+            idx_segment, idx : idx + self.lookback, -1
+        ].reshape(-1, 1)
+        return dict(
+            decoder_covariates=decoder_covariates,
+            encoder_covariates=encoder_covariates,
+            attributes=attributes,
+            decoder_target=decoder_target,
+            encoder_target=encoder_target,
+        )
     
     def __len__(self):
-        return len(self.values) - self.lookback - self.horizon + 1
+        return self.len
 
 if __name__ == "__main__":
     
     
-    df = pd.read_parquet("/Users/marti/Projects/tide/data/electricity_paper.parquet")
+    df = pd.read_parquet("/Users/marti/Projects/tide/data/pattern.parquet")
 
     tsdataset = TSDataset.to_dataset(df)
-    tsdataset = TSDataset(tsdataset, freq="H")
+    tsdataset = TSDataset(tsdataset, freq="D")
     
-    lookback = 720
-    horizon = 96
+    n_segments = tsdataset.df.shape[1]
+    
+    lookback = 14
+    horizon = 7
     
     train_size = int(len(tsdataset.raw_df) * 0.7)
     test_size = int(len(tsdataset.raw_df) * 0.2)
@@ -67,15 +100,20 @@ if __name__ == "__main__":
         test_size=val_size + test_size
     )
 
-    transform = [StandardScalerTransform()]
+    transform = [
+        DateFlagsTransform(out_column="flags"),
+        StandardScalerTransform(),
+    ]
     train_dataset.fit_transform(transform)
     test_dataset.transform(transform)
+    
+    n_features = train_dataset.df.shape[1] // n_segments - 1
     train_dataset = train_dataset.to_pandas()
     test_dataset = test_dataset.to_pandas()
+    
 
     tsdataset = pd.concat([train_dataset, test_dataset])
 
-    
     borders = {
         "train": [0, train_size],
         "val": [train_size - lookback, train_size + val_size],
@@ -83,32 +121,46 @@ if __name__ == "__main__":
     }
 
     datasets = {
-        "train": Dataset(tsdataset.iloc[borders["train"][0] : borders["train"][1]], lookback, horizon),
-        "val": Dataset(tsdataset.iloc[borders["val"][0] : borders["val"][1]], lookback, horizon),
-        "test": Dataset(tsdataset.iloc[borders["test"][0] : borders["test"][1]], lookback, horizon),
+        "train": Dataset(
+            tsdataset.iloc[borders["train"][0] : borders["train"][1]],
+            lookback, horizon, n_segments
+        ),
+        "val": Dataset(
+            tsdataset.iloc[borders["val"][0] : borders["val"][1]],
+            lookback, horizon, n_segments
+        ),
+        "test": Dataset(
+            tsdataset.iloc[borders["test"][0] : borders["test"][1]],
+            lookback, horizon, n_segments
+        ),
     }
     
-    # el, hor = datasets["train"][datasets["train"].__len__() - 1]
+    tide = TiDEModel(
+        ne_blocks = 2,
+        nd_blocks = 2,
+        hidden_size = 32,
+        covariates_size = n_features,
+        p = 0.1,
+        lookback = lookback,
+        decoder_output_size = horizon * 8,
+        temporal_decoder_hidden_size = 32,
+        feature_projection_output_size = 32,
+        feature_projection_hidden_size = 32,
+        horizon = horizon,
+        static_covariates_size = 1,
+    )
     
-    # assert el.shape[0] == lookback
-    # assert hor.shape[0] == horizon
+    batch_size = 32
     
-    # print(hor[-1, : 5])
-    # print(tsdataset.iloc[borders["train"][0] : borders["train"][1]].iloc[-1, : 5])
-
-    def collate_fn(batch):
-        context = [item["context"] for item in batch]
-        target = [item["target"] for item in batch]
-        context = np.stack(context, axis=0)
-        target = np.stack(target, axis=0)
-        context = context.transpose(0, 2, 1)
-        target = target.transpose(0, 2, 1)
-        context = context.reshape(-1, context.shape[-1])
-        target = target.reshape(-1, target.shape[-1])
-        context = torch.from_numpy(context)
-        target = torch.from_numpy(target)
-        return {"context": context, "target": target}
+    train_dataloader = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(datasets["val"], batch_size=batch_size)
+    test_dataloader = DataLoader(datasets["test"], batch_size=batch_size)
     
-    batch_size = 8
-    my_dataloader = DataLoader(datasets["test"], batch_size=batch_size, collate_fn=collate_fn)
-    print(next(iter(my_dataloader))["context"].shape)
+    trainer = pl.Trainer(max_epochs=100)
+    
+    trainer.fit(tide, train_dataloader, val_dataloader)
+    
+    trainer.test(tide, test_dataloader)
+    
+    
+    
