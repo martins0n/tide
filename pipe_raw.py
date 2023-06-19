@@ -26,6 +26,7 @@ from pytorch_lightning.loggers import WandbLogger as plWandbLogger
 
 from src.tide_raw import TiDEModel, Dataset
 from torch.utils.data import DataLoader
+from collections import defaultdict
 
 OmegaConf.register_new_resolver("mul", lambda x, y: x * y)
 
@@ -115,13 +116,13 @@ def run_pipeline(cfg):
 
     transform = [
             TimeFlagsTransform(
-                minute_in_hour_number=True, hour_number=True, out_column="time"
+                minute_in_hour_number=True, hour_number=True, out_column="atime"
             ),
             DateFlagsTransform(
                 day_number_in_week=True,
                 day_number_in_month=True,
                 is_weekend=False,
-                out_column="date",
+                out_column="adate",
             ),
             StandardScalerTransform(),
     ]
@@ -217,6 +218,37 @@ def run_pipeline(cfg):
     trainer.fit(tide, train_dataloader, val_dataloader)
     
     trainer.test(tide, test_dataloader)
+    
+    pred = trainer.predict(tide, test_dataloader)
+    
+    results = defaultdict(list)
+    
+    for batch_pred, batch_target in zip(pred, test_dataloader):
+        
+        
+        
+        results["pred"].append(batch_pred)
+        results["target"].append(batch_target["decoder_target"])
+        results["attributes"].append(batch_target["attributes"].repeat((1, horizon)))
+
+    
+    results["pred"] = torch.cat(results["pred"], dim=0).detach().cpu().numpy()
+    results["target"] = torch.cat(results["target"], dim=0).detach().cpu().numpy()
+    results["attributes"] = torch.cat(results["attributes"], dim=0).detach().cpu().numpy()
+    
+    df = pd.DataFrame(
+        {
+            "pred": results["pred"].flatten(),
+            "target": results["target"].flatten(),
+            "attributes": results["attributes"].flatten(),
+        }
+    )
+    
+    df["time"] = df.groupby("attributes").transform('cumcount')
+    
+    print(df.head())
+    
+    wandb.log({"results": wandb.Table(dataframe=df)})
 
     
 

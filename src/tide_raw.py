@@ -6,10 +6,13 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 import numpy as np
 
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 import pandas as pd
 from etna.datasets import TSDataset
 from etna.transforms import StandardScalerTransform, DateFlagsTransform
-
+from collections import defaultdict
 
 class TiDEModel(pl.LightningModule):
     def __init__(self, lr=1e-3, *args: Any, **kwargs: Any) -> None:
@@ -150,17 +153,49 @@ if __name__ == "__main__":
         static_covariates_size = 1,
     )
     
-    batch_size = 32
+    batch_size = 128
     
     train_dataloader = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True)
     val_dataloader = DataLoader(datasets["val"], batch_size=batch_size)
     test_dataloader = DataLoader(datasets["test"], batch_size=batch_size)
     
-    trainer = pl.Trainer(max_epochs=100)
+    trainer = pl.Trainer(max_epochs=10)
     
     trainer.fit(tide, train_dataloader, val_dataloader)
     
-    trainer.test(tide, test_dataloader)
+    # trainer.test(tide, test_dataloader)
     
+    pred = trainer.predict(tide, test_dataloader)
+    
+    results = defaultdict(list)
+    
+    for batch_pred, batch_target in zip(pred, test_dataloader):
+        print(batch_pred.shape, batch_target["decoder_target"].shape)
+        
+        
+        
+        results["pred"].append(batch_pred)
+        results["target"].append(batch_target["decoder_target"])
+        results["attributes"].append(batch_target["attributes"].repeat((1, horizon)))
+
+    
+    results["pred"] = torch.cat(results["pred"], dim=0).detach().cpu().numpy()
+    results["target"] = torch.cat(results["target"], dim=0).detach().cpu().numpy()
+    results["attributes"] = torch.cat(results["attributes"], dim=0).detach().cpu().numpy()
+    
+    df = pd.DataFrame(
+        {
+            "pred": results["pred"].flatten(),
+            "target": results["target"].flatten(),
+            "attributes": results["attributes"].flatten(),
+        }
+    )
+    
+    df["time"] = df.groupby("attributes").transform('cumcount')
+    
+    sns.lineplot(data=df, x="time", y="pred", hue="attributes")
+    plt.savefig("d.png")
+    sns.lineplot(data=df, x="time", y="target", hue="attributes")
+    plt.savefig("d1.png")
     
     
