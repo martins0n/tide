@@ -1,6 +1,5 @@
 checkpoints
 outputs
 __pycache__
-data
 lightning_logs
 .DS_Store

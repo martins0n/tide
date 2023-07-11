@@ -263,13 +263,13 @@ def run_pipeline(cfg):
         "MSE_mean": mse_mean
     })
     
-    with TemporaryDirectory() as tmpdir:
-        with open(tmpdir + "/results.csv.gz", "wb") as f:
-            df.to_csv(f, index=False, compression="gzip")
-            f.flush()
-        results.add_file(tmpdir + "/results.csv.gz")
+    # with TemporaryDirectory() as tmpdir:
+    #     with open(tmpdir + "/results.csv.gz", "wb") as f:
+    #         df.to_csv(f, index=False, compression="gzip")
+    #         f.flush()
+    #     results.add_file(tmpdir + "/results.csv.gz")
     
-        wandb.log_artifact(results)
+    #     wandb.log_artifact(results)
 
 
 if __name__ == "__main__":
