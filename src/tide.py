@@ -48,6 +48,7 @@ class ResidualSequenceBlock(Module):
         input_size: int,
         output_size: int,
         p: float,
+        layer_norm: bool,
     ) -> None:
         super().__init__()
         if n_blocks == 1:
@@ -56,6 +57,7 @@ class ResidualSequenceBlock(Module):
                 input_size=input_size,
                 output_size=output_size,
                 p=p,
+                layer_norm=layer_norm
             )
         else:
             self.sequence = nn.Sequential(
@@ -66,6 +68,7 @@ class ResidualSequenceBlock(Module):
                             input_size=input_size,
                             output_size=hidden_size,
                             p=p,
+                            layer_norm=layer_norm
                         )
                     ]
                     + [
@@ -74,6 +77,7 @@ class ResidualSequenceBlock(Module):
                             input_size=hidden_size,
                             output_size=hidden_size,
                             p=p,
+                            layer_norm=layer_norm
                         )
                         for _ in range(n_blocks - 2)
                     ]
@@ -83,6 +87,7 @@ class ResidualSequenceBlock(Module):
                             input_size=hidden_size,
                             output_size=output_size,
                             p=p,
+                            layer_norm=layer_norm
                         )
                     ]
                 )
@@ -107,6 +112,7 @@ class TiDE(Module):
         feature_projection_hidden_size: int,
         horizon: int,
         static_covariates_size: int,
+        layer_norm: bool = True,
     ) -> None:
         super().__init__()
 
@@ -115,6 +121,7 @@ class TiDE(Module):
             output_size=feature_projection_output_size,
             hidden_size=feature_projection_hidden_size,
             p=p,
+            layer_norm=layer_norm
         )
 
         self.temporal_decoder = ResidualBlock(
@@ -122,6 +129,7 @@ class TiDE(Module):
             output_size=1,
             hidden_size=temporal_decoder_hidden_size,
             p=p,
+            layer_norm=layer_norm
         )
         self.residual_lookback_projection = nn.Linear(
             in_features=lookback, out_features=horizon
@@ -135,6 +143,7 @@ class TiDE(Module):
             + feature_projection_output_size * lookback,
             output_size=hidden_size,
             hidden_size=hidden_size,
+            layer_norm=layer_norm
         )
 
         self.decoder = ResidualSequenceBlock(
@@ -143,6 +152,7 @@ class TiDE(Module):
             input_size=hidden_size,
             hidden_size=hidden_size,
             output_size=decoder_output_size,
+            layer_norm=layer_norm
         )
 
     def forward(self, x: TiDEBatch) -> torch.Tensor:

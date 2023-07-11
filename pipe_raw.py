@@ -2,6 +2,7 @@ import pathlib
 import random
 import warnings
 from dataclasses import dataclass
+from tempfile import TemporaryDirectory
 
 import pytorch_lightning as pl
 import hydra
@@ -23,6 +24,7 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger as plWandbLogger
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from src.tide_raw import TiDEModel, Dataset
 from torch.utils.data import DataLoader
@@ -58,6 +60,7 @@ class ModelConfig:
     train_batch_size: int
     test_batch_size: int
     train_size: float
+    layer_norm: bool
 
 
 @dataclass
@@ -164,7 +167,7 @@ def run_pipeline(cfg):
     max_epochs = cfg.model.max_epochs
     feature_projection_output_size = cfg.model.feature_projection_output_size
     feature_projection_hidden_size = cfg.model.feature_projection_hidden_size
-
+    layer_norm = cfg.model.layer_norm
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
     trainer_params = {
@@ -204,6 +207,7 @@ def run_pipeline(cfg):
         feature_projection_hidden_size = feature_projection_hidden_size,
         horizon = horizon,
         static_covariates_size = static_covariates_size,
+        layer_norm=layer_norm
     )
     
     batch_size = cfg.model.train_batch_size
@@ -245,12 +249,27 @@ def run_pipeline(cfg):
     )
     
     df["time"] = df.groupby("attributes").transform('cumcount')
-    
-    print(df.head())
-    
-    wandb.log({"results": wandb.Table(dataframe=df)})
 
+    mse_mean = mean_squared_error(df["target"], df["pred"])
+    mae_mean = mean_absolute_error(df["target"], df["pred"])
+    results = wandb.Artifact(
+        "results", 
+        type="dataset"
+    ) 
     
+    
+    wandb.log({
+        "MAE_mean": mae_mean,
+        "MSE_mean": mse_mean
+    })
+    
+    with TemporaryDirectory() as tmpdir:
+        with open(tmpdir + "/results.csv.gz", "wb") as f:
+            df.to_csv(f, index=False, compression="gzip")
+            f.flush()
+        results.add_file(tmpdir + "/results.csv.gz")
+    
+        wandb.log_artifact(results)
 
 
 if __name__ == "__main__":
