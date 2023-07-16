@@ -9,7 +9,7 @@
 - `make datasets`
 
 ### Metrics and wandb link with commands
-| name                                                             |   test_mae |   MAE |   test_mse |   MSE |
+| name                                                             |   test mae |   paper mae |   test mse |  paper mse |
 |:-----------------------------------------------------------------|-----------:|------:|-----------:|------:|
 | [ETTh1 96](https://wandb.ai/martins0n/tide/runs/ui52fc9m)        |   0.450671 | 0.398 |   0.427044 | 0.375 |
 | [ETTh1 192](https://wandb.ai/martins0n/tide/runs/ax9nkchm)       |   0.486024 | 0.422 |   0.47277  | 0.412 |
@@ -40,5 +40,7 @@
 | [weather 720](https://wandb.ai/martins0n/tide/runs/mem4t9cp)     |   0.330308 | 0.34  |   0.266972 | 0.313 |
 
 ### ToDo
-- [ ] Metrics reproducibility
+
+- ➕➖ Metrics reproducibility
+    - some issues with traffic and etth1
 - [ ] REVIN integration
